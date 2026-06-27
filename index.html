@@ -4,7 +4,7 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Железобетонный P2P Мессенджер</title>
-    <!-- Подключаем официальную открытую библиотеку для прямой связи между браузерами -->
+    <!-- Официальная открытая библиотека WebRTC (CORS разрешен везде) -->
     <script src="https://unpkg.com"></script>
 
     <style>
@@ -39,7 +39,8 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <h3 id="room-title" style="margin-top: 0; color: #2481cc;">Подключение к сети...</h3>
+        <!-- Динамический индикатор сверху -->
+        <h3 id="room-title" style="margin-top: 0; color: #2481cc;">Инициализация...</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -64,8 +65,16 @@
         var peer;
         var connections = [];
         
-        // Общий токен комнаты. Измените его на любой уникальный, чтобы создать отдельный чат.
-        var CHAT_ROOM_TAG = "github_global_p2p_secure_room_2026";
+        // АЛГОРИТМ ОПРЕДЕЛЕНИЯ КОМНАТЫ: извлекаем хэш из ссылки, либо генерируем новый
+        var currentRoomId = window.location.hash.substring(1);
+        if (!currentRoomId) {
+            currentRoomId = 'room_' + Math.random().toString(36).substr(2, 9);
+            window.location.hash = currentRoomId;
+        }
+
+        // Уникальный глобальный префикс для изоляции от сторонних приложений на серверах PeerJS
+        var APP_PREFIX = "ru_github_p2p_app_v2_";
+        var CHAT_ROOM_TAG = APP_PREFIX + currentRoomId;
 
         function checkPassword() {
             var pass = document.getElementById('password-input').value;
@@ -92,10 +101,11 @@
         }
 
         function initP2PNetwork() {
-            // Генерируем случайный ID для текущей сессии
+            // АЛГОРИТМ РАЗГРАНИЧЕНИЯ СЕССИЙ: Уникальный ID состоит из Префикса_Комнаты_СлучайногоIDЮзера
             var myPeerId = CHAT_ROOM_TAG + "_" + Math.random().toString(36).substr(2, 6);
             
-            // Подключаемся к бесплатному публичному глобальному серверу обмена пирами (CORS разрешен изначально)
+            updateStatus("Подключение к сети...", "#ffff55");
+
             peer = new Peer(myPeerId, {
                 host: '://peerjs.com',
                 port: 443,
@@ -103,25 +113,36 @@
             });
 
             peer.on('open', function(id) {
-                document.getElementById('room-title').innerText = "Глобальная комната (" + myName + ")";
+                updateStatus("Сеть активна | Комната: #" + currentRoomId.replace('room_', ''), "#55ff55");
                 
-                // Ищем другие вкладки/устройства в этой комнате. 
-                // Так как у нас нет базы, мы раз в 3 секунды сканируем пространство на наличие активных пиров
+                // Сканируем пространство на наличие пиров из НАШЕЙ комнаты каждые 3 секунды
                 setInterval(findPeers, 3000);
             });
 
-            // Когда к нам подключается твинк или другой человек напрямую
+            peer.on('disconnected', function() {
+                updateStatus("Связь потеряна, переподключение...", "#ff5555");
+                peer.reconnect();
+            });
+
+            // Прием прямого дата-канала от твинка/собеседника
             peer.on('connection', function(conn) {
                 setupConnectionHandlers(conn);
             });
         }
 
-        // Автоматический поиск активных людей в нашей комнате
+        function updateStatus(text, color) {
+            var title = document.getElementById('room-title');
+            title.innerText = text;
+            title.style.color = color;
+        }
+
+        // АЛГОРИТМ СЛИЯНИЯ СЕССИЙ ВНУТРИ ОДНОЙ КОМНАТЫ
         function findPeers() {
-            // Запрашиваем у облака список всех подключенных сейчас ID с нашим префиксом комнаты
+            if (peer.disconnected) return;
+
             peer.listAllPeers(function(allPeers) {
                 allPeers.forEach(function(peerId) {
-                    // Если нашли чужой ID из нашей комнаты и мы к нему еще не подключены — коннектимся напрямую
+                    // Строгое разграничение: подключаемся только если ID начинается с тега НАШЕЙ комнаты
                     if (peerId.indexOf(CHAT_ROOM_TAG) === 0 && peerId !== peer.id) {
                         var isAlreadyConnected = connections.some(function(c) { return c.peer === peerId; });
                         if (!isAlreadyConnected) {
@@ -134,9 +155,12 @@
         }
 
         function setupConnectionHandlers(conn) {
-            connections.push(conn);
+            // Чтобы не плодить дублирующие соединения между одними и теми же вкладками
+            var isAlreadySaved = connections.some(function(c) { return c.peer === conn.peer; });
+            if (!isAlreadySaved) {
+                connections.push(conn);
+            }
 
-            // Слушаем прямые сообщения по WebRTC каналу (минуя сервера)
             conn.on('data', function(data) {
                 if (data && data.sender && data.text) {
                     var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + data.sender + ':</span><span>' + data.text + '</span>';
@@ -162,10 +186,9 @@
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
                 var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
                 
-                // 1. Сразу выводим у себя локально
                 displayMessage(myFullMessage);
 
-                // 2. Рассылаем пакет напрямую во все подключенные девайсы (прямой P2P стрим)
+                // Рассылаем пакет только тем, кто привязан к нашей комнате
                 connections.forEach(function(conn) {
                     if (conn.open) {
                         conn.send({
