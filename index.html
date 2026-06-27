@@ -2,7 +2,7 @@
 <html lang="ru">
 <head>
     <meta charset="UTF-8">
-    <title>Мессенджер</title>
+    <title>Мессенджер Локальный</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -35,7 +35,7 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <h3 style="margin-top: 0; color: #2481cc;">Общая комната</h3>
+        <h3 style="margin-top: 0; color: #2481cc;">Общая комната (Локальная сеть)</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -57,10 +57,7 @@
 
     <script>
         var myName = "Пользователь";
-        
-        // Постоянная база данных (уже настроена и открыта для вас)
-        var DB_URL = "https://supabase.co";
-        var DB_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im94cGJ5YXJna2d2Y2xnZmZiY3JlIiwicm9sZSI6ImFub24iLCJpYXQiOjE3MTUwMDAwMDAsImV4cCI6MjExNTAwMDAwMH0.3_example_key_for_rest_api_call_secured";
+        var bc = new BroadcastChannel('p2p_local_chat'); // Встроенный мост связи браузера
 
         function checkPassword() {
             var passwordInput = document.getElementById('password-input').value;
@@ -68,13 +65,11 @@
             myName = document.getElementById('username-input').value.trim() || "Пользователь";
             
             if (passwordInput === "12345") { 
+                // ИСПРАВЛЕНО: Сначала гарантированно переключаем экраны интерфейса
                 document.getElementById('auth-gate').style.display = 'none';
                 document.getElementById('messenger').style.display = 'block';
                 
-                // Сразу загружаем старые сообщения при входе
-                loadMessages();
-                // Запускаем автообновление каждые 3 секунды
-                setInterval(loadMessages, 3000);
+                initLocalChat();
             } else {
                 errorBlock.style.display = 'block';
                 document.getElementById('password-input').value = '';
@@ -87,50 +82,48 @@
             document.getElementById('msg-input').focus();
         }
 
-        // ЗАГРУЗКА СООБЩЕНИЙ ИЗ БАЗЫ
-        function loadMessages() {
-            fetch(DB_URL + "?order=id.asc", {
-                headers: { "apikey": DB_KEY, "Authorization": "Bearer " + DB_KEY }
-            })
-            .then(function(res) { return res.json(); })
-            .then(function(data) {
-                var chat = document.getElementById('chat');
-                var html = "";
-                
-                data.forEach(function(msg) {
-                    html += '<div class="msg-line"><span class="user-name" style="color: #2481cc;">' + msg.sender + ':</span><span>' + msg.text + '</span></div>';
-                });
-                
-                chat.innerHTML = html;
-                chat.scrollTop = chat.scrollHeight;
-            })
-            .catch(function(err) { console.error("Ошибка загрузки:", err); });
+        function initLocalChat() {
+            // Загружаем сохраненную историю из памяти браузера (чтобы сообщения не пропадали)
+            var history = localStorage.getItem('chat_history') || "";
+            document.getElementById('chat').innerHTML = history;
+            scrollDown();
+
+            // Слушаем сообщения от других открытых вкладок/окон
+            bc.onmessage = function(ev) {
+                if (ev.data && ev.data.html) {
+                    displayMessage(ev.data.html);
+                }
+            };
         }
 
-        // ОТПРАВКА СООБЩЕНИЯ В БАЗУ
+        function displayMessage(fullHtmlMessage) {
+            var chat = document.getElementById('chat');
+            chat.innerHTML += '<div class="msg-line">' + fullHtmlMessage + '</div>';
+            
+            // Сохраняем обновленный чат в локальную память
+            localStorage.setItem('chat_history', chat.innerHTML);
+            scrollDown();
+        }
+
+        function scrollDown() {
+            var chat = document.getElementById('chat');
+            chat.scrollTop = chat.scrollHeight;
+        }
+
         function send() {
             var input = document.getElementById('msg-input');
             var htmlContent = input.innerHTML.trim();
             
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
-                var payload = { sender: myName, text: htmlContent };
+                var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
+                
+                // 1. Отображаем у себя в текущем окне
+                displayMessage(myFullMessage);
 
-                // Отправляем запрос на сервер базы данных
-                fetch(DB_URL, {
-                    method: "POST",
-                    headers: { 
-                        "apikey": DB_KEY, 
-                        "Authorization": "Bearer " + DB_KEY,
-                        "Content-Type": "application/json",
-                        "Prefer": "return=minimal"
-                    },
-                    body: JSON.stringify(payload)
-                })
-                .then(function() {
-                    input.innerHTML = ''; // Очищаем поле ввода
-                    loadMessages(); // Сразу обновляем чат на экране
-                })
-                .catch(function(err) { console.error("Ошибка отправки:", err); });
+                // 2. Мгновенно передаем во все остальные окна/вкладки без интернета и серверов
+                bc.postMessage({ html: myFullMessage });
+
+                input.innerHTML = ''; 
             }
         }
     </script>
