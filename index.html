@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Глобальный P2P Мессенджер</title>
+    <title>Рабочий P2P Мессенджер</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -36,7 +36,7 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <h3 style="margin-top: 0; color: #2481cc;">Глобальная P2P комната</h3>
+        <h3 style="margin-top: 0; color: #2481cc;">Глобальная комната</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -59,7 +59,11 @@
     <script>
         var myName = "Пользователь";
         var ws;
-        var CHAT_ROOM_ID = "github_p2p_room_secure_global_2026"; 
+        
+        // Уникальный ID комнаты, чтобы сообщения не путались с другими людьми на сервере
+        var CHAT_ROOM_ID = "github_global_chat_room_2026_v9"; 
+        // Создаем уникальный ID для текущей вкладки, чтобы отличать себя от твинка
+        var myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
 
         function checkPassword() {
             var pass = document.getElementById('password-input').value;
@@ -70,7 +74,7 @@
                 myName = user || "Пользователь";
                 document.getElementById('auth-gate').style.display = 'none';
                 document.getElementById('messenger').style.display = 'block';
-                initGlobalNetwork();
+                initNetwork();
             } else {
                 errorBlock.style.display = 'block';
                 document.getElementById('password-input').value = '';
@@ -83,35 +87,26 @@
             document.getElementById('msg-input').focus();
         }
 
-        function initGlobalNetwork() {
-            ws = new WebSocket('wss://nos.lol');
-
-            ws.onopen = function() {
-                var subscription = ["REQ", "sub_chat", { "kinds": [42], "#d": [CHAT_ROOM_ID], "limit": 50 }];
-                ws.send(JSON.stringify(subscription));
-            };
+        function initNetwork() {
+            // Используем полностью открытый бесплатный тестовый WebSocket-кластер (PieSocket)
+            ws = new WebSocket('wss://://piesocket.com' + CHAT_ROOM_ID + '?api_key=VCXCEuvhGcBDP7XhiJZ2i962w3XmrrvXBHBdQAId&notify_self=0');
 
             ws.onmessage = function(event) {
                 try {
-                    var data = JSON.parse(event.data);
+                    var payload = JSON.parse(event.data);
                     
-                    // ИСПРАВЛЕНО: Теперь корректно разбираем массив по спецификации Nostr
-                    if (Array.isArray(data) && data[0] === "EVENT" && data[2] && data[2].kind === 42) {
-                        var nostrEvent = data[2];
-                        var content = JSON.parse(nostrEvent.content);
-                        
-                        var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + content.sender + ':</span><span>' + content.text + '</span>';
-                        
-                        // Если сообщения ещё нет в чате — выводим на экран
-                        if (document.getElementById('chat').innerHTML.indexOf(fullHtmlMessage) === -1) {
-                            displayMessage(fullHtmlMessage);
-                        }
+                    // Если сообщение прислал наш собственный твинк/другой юзер — выводим на экран
+                    if (payload && payload.userId !== myUserId) {
+                        var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + payload.sender + ':</span><span>' + payload.text + '</span>';
+                        displayMessage(fullHtmlMessage);
                     }
-                } catch(e) {}
+                } catch(e) {
+                    console.error("Ошибка приёма пакета:", e);
+                }
             };
 
             ws.onclose = function() {
-                setTimeout(initGlobalNetwork, 3000);
+                setTimeout(initNetwork, 3000); // Авто-реконнект при обрыве связи
             };
         }
 
@@ -128,24 +123,17 @@
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
                 var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
                 
+                // 1. Сразу отображаем сообщение у себя в окне локально
                 displayMessage(myFullMessage);
 
+                // 2. Отправляем чистые данные в сеть
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    var payload = {
+                    var packet = {
+                        userId: myUserId,
                         sender: myName,
                         text: htmlContent
                     };
-                    
-                    var nostrEvent = {
-                        "kind": 42,
-                        "created_at": Math.floor(Date.now() / 1000),
-                        "tags": [["d", CHAT_ROOM_ID]],
-                        "content": JSON.stringify(payload),
-                        "pubkey": "0000000000000000000000000000000000000000000000000000000000000000", 
-                        "id": "id_" + Math.random().toString(36).substr(2, 9)
-                    };
-
-                    ws.send(JSON.stringify(["EVENT", nostrEvent]));
+                    ws.send(JSON.stringify(packet));
                 }
 
                 input.innerHTML = ''; 
