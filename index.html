@@ -61,71 +61,82 @@
 
     <script>
         let client;
-        let myName = "Пользователь";
+let myName = "Пользователь";
+
+// Имя комнаты. Сделайте его уникальным
+const CHAT_ROOM = "my_secret_github_chat_room_1984"; 
+
+function checkPassword() {
+    const passwordInput = document.getElementById('password-input').value;
+    const errorBlock = document.getElementById('error-msg');
+    myName = document.getElementById('username-input').value.trim() || "Пользователь";
+    
+    if (passwordInput === "12345") { 
+        document.getElementById('auth-gate').style.display = 'none';
+        document.getElementById('messenger').style.display = 'block';
+        initP2P(); 
+    } else {
+        errorBlock.style.display = 'block';
+        document.getElementById('password-input').value = '';
+    }
+}
+
+function format(command, value = null) {
+    document.execCommand(command, false, value);
+    document.getElementById('msg-input').focus();
+}
+
+// ИНИЦИАЛИЗАЦИЯ СВЯЗИ
+function initP2P() {
+    client = mqtt.connect('wss://://hivemq.com');
+
+    client.on('connect', () => {
+        client.subscribe(CHAT_ROOM);
+    });
+
+    // ПРИЕМ СООБЩЕНИЙ ОТ ДРУГИХ ПОЛЬЗОВАТЕЛЕЙ
+    client.on('message', (topic, message) => {
+        if (topic === CHAT_ROOM) {
+            const incomingData = JSON.parse(message.toString());
+            
+            // Если имя отправителя совпадает с вашим, игнорируем (так как мы уже отрисовали его локально)
+            if (incomingData.sender === myName) return; 
+            
+            displayMessage(incomingData.text);
+        }
+    });
+}
+
+function displayMessage(fullHtmlMessage) {
+    const chat = document.getElementById('chat');
+    chat.innerHTML += `<div class="msg-line">${fullHtmlMessage}</div>`;
+    chat.scrollTop = chat.scrollHeight; 
+}
+
+// ОТПРАВКА СООБЩЕНИЯ С ДУБЛИРОВАНИЕМ ЛОГИКИ
+function send() {
+    const input = document.getElementById('msg-input');
+    const htmlContent = input.innerHTML.trim();
+    
+    if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
+        const myFullMessage = `<span class="user-name" style="color: #2481cc;">${myName}:</span><span>${htmlContent}</span>`;
         
-        // Придумайте уникальное имя комнаты. Все, кто откроют этот файл, подключатся к ней.
-        const CHAT_ROOM = "my_secret_github_chat_room_1984"; 
+        // 1. Логика для МЕНЯ: Выводим на экран мгновенно без задержек сети
+        displayMessage(myFullMessage);
 
-        function checkPassword() {
-            const passwordInput = document.getElementById('password-input').value;
-            const errorBlock = document.getElementById('error-msg');
-            myName = document.getElementById('username-input').value.trim() || "Пользователь";
-            
-            if (passwordInput === "12345") { 
-                document.getElementById('auth-gate').style.display = 'none';
-                document.getElementById('messenger').style.display = 'block';
-                initP2P(); 
-            } else {
-                errorBlock.style.display = 'block';
-                document.getElementById('password-input').value = '';
-            }
+        // 2. Логика для НИХ: Упаковываем текст и имя автора, затем отправляем в сеть
+        if (client && client.connected) {
+            const networkPayload = {
+                sender: myName,
+                text: myFullMessage
+            };
+            client.publish(CHAT_ROOM, JSON.stringify(networkPayload));
         }
 
-        function format(command, value = null) {
-            document.execCommand(command, false, value);
-            document.getElementById('msg-input').focus();
-        }
+        input.innerHTML = ''; // Очищаем поле ввода
+    }
+}
 
-        // ИНИЦИАЛИЗАЦИЯ СВЯЗИ НАПРЯМУЮ ЧЕРЕЗ ПУБЛИЧНЫЙ БРОКЕР
-        function initP2P() {
-            // Подключаемся к бесплатному публичному вебсокет-серверу связи в реальном времени
-            client = mqtt.connect('wss://://hivemq.com');
-
-            client.on('connect', () => {
-                // Подписываемся на нашу секретную комнату
-                client.subscribe(CHAT_ROOM);
-            });
-
-            // Когда от кого-то прилетает сообщение
-            client.on('message', (topic, message) => {
-                if (topic === CHAT_ROOM) {
-                    displayMessage(message.toString());
-                }
-            });
-        }
-
-        function displayMessage(fullHtmlMessage) {
-            const chat = document.getElementById('chat');
-            chat.innerHTML += `<div class="msg-line">${fullHtmlMessage}</div>`;
-            chat.scrollTop = chat.scrollHeight;
-        }
-
-        // ОТПРАВКА СООБЩЕНИЯ НАПРЯМУЮ ДРУГИМ ПОЛЬЗОВАТЕЛЯМ
-        function send() {
-            const input = document.getElementById('msg-input');
-            const htmlContent = input.innerHTML.trim();
-            
-            if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
-                const myFullMessage = `<span class="user-name" style="color: #2481cc;">${myName}:</span><span>${htmlContent}</span>`;
-                
-                // Публикуем сообщение в сеть — оно мгновенно долетит до всех участников комнаты
-                if (client && client.connected) {
-                    client.publish(CHAT_ROOM, myFullMessage);
-                }
-
-                input.innerHTML = ''; 
-            }
-        }
     </script>
 </body>
 </html>
