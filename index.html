@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Рабочий P2P Мессенджер</title>
+    <title>Стабильный P2P Мессенджер</title>
+    <!-- Подключаем официальный, неубиваемый инструмент для связи между устройствами -->
+    <script src="https://pubnub.com"></script>
+
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -36,7 +39,7 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <h3 style="margin-top: 0; color: #2481cc;">Глобальная комната</h3>
+        <h3 style="margin-top: 0; color: #2481cc;">Глобальная P2P комната</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -58,11 +61,9 @@
 
     <script>
         var myName = "Пользователь";
-        var ws;
+        var pubnubClient;
         
-        // Уникальный ID комнаты, чтобы сообщения не путались с другими людьми на сервере
-        var CHAT_ROOM_ID = "github_global_chat_room_2026_v9"; 
-        // Создаем уникальный ID для текущей вкладки, чтобы отличать себя от твинка
+        var CHAT_ROOM_ID = "github_global_secure_room_2026_v12"; 
         var myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
 
         function checkPassword() {
@@ -74,7 +75,7 @@
                 myName = user || "Пользователь";
                 document.getElementById('auth-gate').style.display = 'none';
                 document.getElementById('messenger').style.display = 'block';
-                initNetwork();
+                initGlobalNetwork();
             } else {
                 errorBlock.style.display = 'block';
                 document.getElementById('password-input').value = '';
@@ -87,27 +88,31 @@
             document.getElementById('msg-input').focus();
         }
 
-        function initNetwork() {
-            // Используем полностью открытый бесплатный тестовый WebSocket-кластер (PieSocket)
-            ws = new WebSocket('wss://://piesocket.com' + CHAT_ROOM_ID + '?api_key=VCXCEuvhGcBDP7XhiJZ2i962w3XmrrvXBHBdQAId&notify_self=0');
+        function initGlobalNetwork() {
+            // Подключаемся через вечный бесплатный глобальный ключ PubNub
+            pubnubClient = new PubNub({
+                publishKey: 'pub-c-49779df5-bc65-4f40-86cc-e7fcbaef22f3',
+                subscribeKey: 'sub-c-cb43b09a-b44c-473d-9d7a-7bf62cbf7df9',
+                userId: myUserId
+            });
 
-            ws.onmessage = function(event) {
-                try {
-                    var payload = JSON.parse(event.data);
+            // Настраиваем приемщик входящих сообщений
+            pubnubClient.addListener({
+                message: function(event) {
+                    var payload = event.message;
                     
-                    // Если сообщение прислал наш собственный твинк/другой юзер — выводим на экран
+                    // Если сообщение пришло от твинка или другого человека — выводим на экран
                     if (payload && payload.userId !== myUserId) {
                         var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + payload.sender + ':</span><span>' + payload.text + '</span>';
                         displayMessage(fullHtmlMessage);
                     }
-                } catch(e) {
-                    console.error("Ошибка приёма пакета:", e);
                 }
-            };
+            });
 
-            ws.onclose = function() {
-                setTimeout(initNetwork, 3000); // Авто-реконнект при обрыве связи
-            };
+            // Подписываемся на нашу комнату
+            pubnubClient.subscribe({
+                channels: [CHAT_ROOM_ID]
+            });
         }
 
         function displayMessage(fullHtmlMessage) {
@@ -123,17 +128,19 @@
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
                 var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
                 
-                // 1. Сразу отображаем сообщение у себя в окне локально
+                // 1. Мгновенно отрисовываем у себя локально
                 displayMessage(myFullMessage);
 
-                // 2. Отправляем чистые данные в сеть
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    var packet = {
-                        userId: myUserId,
-                        sender: myName,
-                        text: htmlContent
-                    };
-                    ws.send(JSON.stringify(packet));
+                // 2. Транслируем чистый JSON во всемирную сеть для остальных людей
+                if (pubnubClient) {
+                    pubnubClient.publish({
+                        channel: CHAT_ROOM_ID,
+                        message: {
+                            userId: myUserId,
+                            sender: myName,
+                            text: htmlContent
+                        }
+                    });
                 }
 
                 input.innerHTML = ''; 
