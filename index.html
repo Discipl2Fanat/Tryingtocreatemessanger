@@ -127,31 +127,35 @@
             };
         }
 
-        function send() {
-            var input = document.getElementById('msg-input');
-            var htmlContent = input.innerHTML.trim();
-            
-            if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
-                var myFullMessage = '<div class="msg-line"><span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span></div>';
-                
-                // 1. Моментальный вывод у себя локально
-                var chat = document.getElementById('chat');
-                chat.innerHTML += myFullMessage;
-                chat.scrollTop = chat.scrollHeight;
+ function send() {
+    var input = document.getElementById('msg-input');
+    var htmlContent = input.innerHTML.trim();
+    
+    // ИСПРАВЛЕНО: Полная и жесткая проверка на все варианты пустых переносов строк
+    if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>" && htmlContent !== "<br><div></div>") {
+        
+        // ИСПРАВЛЕНО: Чистая структура строки БЕЗ ломающих тегов <div> внутри innerHTML
+        var myFullMessage = '<div class="msg-line"><span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span></div>';
+        
+        // 1. Моментальный вывод у себя локально
+        var chat = document.getElementById('chat');
+        chat.innerHTML += myFullMessage;
+        chat.scrollTop = chat.scrollHeight;
 
-                // 2. Отправка чистого текстового JSON пакета в сеть без ручной байт-сборки
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    var packet = {
-                        userId: myUserId,
-                        sender: myName,
-                        text: htmlContent
-                    };
-                    ws.send(JSON.stringify(packet));
-                }
-
-                input.innerHTML = ''; 
-            }
+        // 2. Отправка чистого текстового JSON пакета в сеть
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            var packet = {
+                userId: myUserId,
+                sender: myName,
+                text: htmlContent
+            };
+            ws.send(JSON.stringify(packet));
         }
+
+        input.innerHTML = ''; // Очищаем поле ввода
+        input.focus(); // Возвращаем фокус на поле ввода
+    }
+}
     </script>
 </body>
 </html>
