@@ -3,177 +3,123 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Железобетонный Сетевой Мессенджер</title>
+    <title>Настоящий Сетевой Чат</title>
     <style>
-        body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
-        .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
+        body { font-family: sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
+        .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; }
         input { width: 90%; padding: 10px; margin: 10px 0; background: #24303f; color: white; border: 1px solid #17212b; border-radius: 4px; text-align: center; font-size: 16px; outline: none; }
-        button { padding: 10px 15px; background: #2481cc; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; }
-        button:hover { background: #288ece; }
-        #error-msg { color: #e53935; font-size: 14px; margin-top: 10px; display: none; }
+        button { padding: 10px 15px; background: #2481cc; color: white; border: none; border-radius: 4px; font-size: 16px; cursor: pointer; font-weight: bold; width: 97%; }
         
-        #messenger { display: none; width: 100%; max-width: 600px; height: 80vh; background: #182533; padding: 20px; border-radius: 8px; box-shadow: 0 4px 10px rgba(0,0,0,0.3); box-sizing: border-box; }
-        #chat { width: 100%; height: 65%; border: 1px solid #17212b; background: #0e1621; overflow-y: auto; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border-radius: 4px; }
-        .msg-line { margin-bottom: 8px; word-wrap: break-word; text-align: left; font-size: 15px; }
-        .user-name { font-weight: bold; margin-right: 5px; }
-        
-        .toolbar { display: flex; gap: 5px; margin-bottom: 5px; }
-        .toolbar button, .toolbar select { padding: 5px; font-size: 13px; width: auto; margin: 0; background: #24303f; color: white; border: 1px solid #17212b; border-radius: 4px; }
-        #msg-input { width: 100%; min-height: 50px; max-height: 100px; background: #24303f; color: white; border: 1px solid #17212b; border-radius: 4px; padding: 10px; overflow-y: auto; box-sizing: border-box; text-align: left; outline: none; }
-        #msg-input:empty:before { content: attr(placeholder); color: #7f8c8d; }
+        #messenger { display: none; width: 100%; max-width: 600px; height: 80vh; background: #182533; padding: 20px; border-radius: 8px; box-sizing: border-box; }
+        #chat { width: 100%; height: 75%; border: 1px solid #17212b; background: #0e1621; overflow-y: auto; padding: 10px; margin-bottom: 10px; box-sizing: border-box; border-radius: 4px; }
+        .msg-line { margin-bottom: 8px; text-align: left; font-size: 15px; }
+        .user-name { font-weight: bold; color: #2481cc; margin-right: 5px; }
+        #msg-input { width: 100%; min-height: 50px; background: #24303f; color: white; border: 1px solid #17212b; border-radius: 4px; padding: 10px; box-sizing: border-box; outline: none; }
     </style>
 </head>
 <body>
 
     <!-- ВХОД -->
     <div class="login-box" id="auth-gate">
-        <h2 style="margin-top: 0; margin-bottom: 20px;">Вход в систему</h2>
-        <input type="password" id="password-input" placeholder="Введите пароль" value="12345">
-        <input type="text" id="username-input" placeholder="Ваш никнейм" value="Пользователь">
-        <button onclick="checkPassword()" style="width: 97%;">Войти</button>
-        <div id="error-msg">Неверный пароль.</div>
+        <h2>Вход</h2>
+        <input type="password" id="password-input" value="12345">
+        <input type="text" id="username-input" value="Юзер_ПК">
+        <button onclick="checkPassword()">Войти</button>
     </div>
 
-    <!-- ЧАТ -->
+    <!-- МЕССЕНДЖЕР -->
     <div id="messenger">
-        <h3 id="room-title" style="margin-top: 0; color: #ffff55;">Подключение к сети...</h3>
+        <h3 id="status-title" style="margin-top: 0; color: #ffff55;">Подключение к сети...</h3>
         <div id="chat"></div>
-        
-        <div class="toolbar">
-            <button onclick="format('bold')"><b>B</b></button>
-            <button onclick="format('italic')"><i>I</i></button>
-            <button onclick="format('underline')"><u>U</u></button>
-            <select onchange="format('foreColor', this.value)">
-                <option value="#ffffff">Белый</option>
-                <option value="#ff5555">Красный</option>
-                <option value="#55ff55">Зеленый</option>
-                <option value="#5555ff">Синий</option>
-                <option value="#ffff55">Желтый</option>
-            </select>
-        </div>
-
         <div id="msg-input" contenteditable="true" placeholder="Напишите сообщение..."></div>
         <button onclick="send()" style="width: 100%; margin-top: 10px;">Отправить</button>
     </div>
 
     <script>
         var myName = "Пользователь";
-        var ws;
+        var socket;
         
-        // Получаем ID комнаты из хэша адресной строки
-        var currentRoomId = window.location.hash.substring(1);
-        if (!currentRoomId) {
-            currentRoomId = 'room_' + Math.random().toString(36).substr(2, 9);
-            window.location.hash = currentRoomId;
-        }
-
-        // Генерируем случайный ID сессии
-        var myUserId = 'user_' + Math.random().toString(36).substr(2, 6);
+        // Уникальное имя канала. Измените цифры, чтобы создать свою закрытую комнату.
+        var CHANNEL_NAME = "##github_p2p_room_2026_v5"; 
 
         function checkPassword() {
-            var pass = document.getElementById('password-input').value;
-            var user = document.getElementById('username-input').value.trim();
-            var errorBlock = document.getElementById('error-msg');
-            
-            if (pass === "12345") { 
-                myName = user || "Пользователь";
+            if (document.getElementById('password-input').value === "12345") { 
+                // Превращаем никнейм в английские буквы, так как IRC сервера требуют латиницу в ID
+                var rawUser = document.getElementById('username-input').value.trim() || "User";
+                myName = rawUser.replace(/[^a-zA-Z0-9_]/g, '') + "_" + Math.floor(Math.random() * 100);
                 
                 document.getElementById('auth-gate').style.display = 'none';
                 document.getElementById('messenger').style.display = 'block';
                 
-                initNetwork();
-            } else {
-                errorBlock.style.display = 'block';
-                document.getElementById('password-input').value = '';
+                initIRCNetwork();
             }
         }
 
-        function format(command, value) {
-            var val = value || null;
-            document.execCommand(command, false, val);
-            document.getElementById('msg-input').focus();
-        }
+        function initIRCNetwork() {
+            // Подключаемся к крупнейшей мировой текстовой сети через бесплатный защищенный веб-сокет шлюз
+            socket = new WebSocket('wss://irc.libera.chat:8443');
 
-        // БРОНЕБОЙНЫЙ МЕТОД ВЫВОДА СООБЩЕНИЙ С ЗАЩИТОЙ ОТ СБОЕВ
-        function displayMessage(senderName, messageText) {
-            var chat = document.getElementById('chat');
-            
-            var msgLine = document.createElement('div');
-            msgLine.className = 'msg-line';
-            
-            var nameSpan = document.createElement('span');
-            nameSpan.className = 'user-name';
-            nameSpan.style.color = '#2481cc';
-            nameSpan.innerText = senderName + ': ';
-            
-            var textSpan = document.createElement('span');
-            textSpan.innerHTML = messageText; // Поддержка цветного текста из тулбара
-            
-            msgLine.appendChild(nameSpan);
-            msgLine.appendChild(textSpan);
-            chat.appendChild(msgLine);
-            
-            chat.scrollTop = chat.scrollHeight; // Скролл вниз
-        }
-
-        function initNetwork() {
-            // ИСПРАВЛЕНО: Удален ломающий сессию параметр &notify_self=0, эндпоинт теперь полностью валиден
-            ws = new WebSocket('wss://demo.piesocket.com/v3/' + currentRoomId + '?api_key=VCXCEuvhGcBDP7XhiJZ2i962w3XmrrvXBHBdQAId');
-
-            ws.onopen = function() {
-                var title = document.getElementById('room-title');
-                title.innerText = "Сеть активна | Комната: #" + currentRoomId.replace('room_', '');
-                title.style.color = "#55ff55"; // Зеленый цвет успешной сборки
+            socket.onopen = function() {
+                // Регистрируемся на IRC сервере по официальному стандарту
+                socket.send("NICK " + myName + "\r\n");
+                socket.send("USER " + myName + " 0 * :P2PChat\r\n");
+                // Заходим в нашу секретную комнату
+                socket.send("JOIN " + CHANNEL_NAME + "\r\n");
+                
+                var status = document.getElementById('status-title');
+                status.innerText = "Сеть активна | Ник в сети: " + myName;
+                status.style.color = "#55ff55";
             };
 
-            // ДВУСТОРОННИЙ ПРИЕМ СООБЩЕНИЙ
-            ws.onmessage = function(event) {
-                try {
-                    var payload = JSON.parse(event.data);
+            socket.onmessage = function(event) {
+                var rawLine = event.data;
+                
+                // Сервер периодически проверяет, живы ли мы. Отвечаем автоматом, чтобы не выкинуло
+                if (rawLine.indexOf("PING") === 0) {
+                    socket.send(rawLine.replace("PING", "PONG") + "\r\n");
+                    return;
+                }
+                
+                // Вырезаем текст сообщения из сетевой строки IRC вида ":Ник!~user@host PRIVMSG ##канал :текст"
+                var privmsgIndex = rawLine.indexOf(" PRIVMSG " + CHANNEL_NAME + " :");
+                if (privmsgIndex !== -1) {
+                    var sender = rawLine.substring(1, rawLine.indexOf("!"));
+                    var text = rawLine.substring(privmsgIndex + (" PRIVMSG " + CHANNEL_NAME + " :").length).trim();
                     
-                    // Если сообщение пришло от твинка/другого человека — выводим на экран
-                    if (payload && payload.userId !== myUserId) {
-                        displayMessage(payload.sender, payload.text);
+                    // Если сообщение от твинка — выводим на экран
+                    if (sender !== myName) {
+                        displayMessage(sender, text);
                     }
-                } catch(e) {
-                    console.error("Технический пакет");
                 }
             };
 
-            ws.onclose = function() {
-                var title = document.getElementById('room-title');
-                title.innerText = "Связь потеряна, переподключение...";
-                title.style.color = "#ff5555";
-                setTimeout(initNetwork, 3000); // Автоподключение
+            socket.onclose = function() {
+                document.getElementById('status-title').innerText = "Переподключение...";
+                document.getElementById('status-title').style.color = "#ff5555";
+                setTimeout(initIRCNetwork, 4000); // Автоподключение при сбое мобильного интернета
             };
+        }
+
+        function displayMessage(senderName, messageText) {
+            var chat = document.getElementById('chat');
+            chat.innerHTML += '<div class="msg-line"><span class="user-name">' + senderName + ':</span><span>' + messageText + '</span></div>';
+            chat.scrollTop = chat.scrollHeight;
         }
 
         function send() {
             var input = document.getElementById('msg-input');
-            var htmlContent = input.innerHTML.trim();
+            var text = input.innerText.trim();
             
-            // Проверка, что поле ввода содержит реальные данные
-            var tempDiv = document.createElement('div');
-            tempDiv.innerHTML = htmlContent;
-            var plainText = tempDiv.innerText.trim();
-            
-            if (plainText.length > 0 || htmlContent.indexOf('<img') !== -1) {
+            if (text.length > 0) {
+                // 1. Сразу выводим сообщение у себя на экране
+                displayMessage(myName, text);
                 
-                // 1. Моментальный вывод у себя локально (для отзывчивости)
-                displayMessage(myName, htmlContent);
-
-                // 2. Отправка пакета в сеть для твинка
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    var packet = {
-                        userId: myUserId,
-                        sender: myName,
-                        text: htmlContent
-                    };
-                    ws.send(JSON.stringify(packet));
+                // 2. Отправляем в глобальный канал для твинка по стандарту PRIVMSG
+                if (socket && socket.readyState === WebSocket.OPEN) {
+                    socket.send("PRIVMSG " + CHANNEL_NAME + " :" + text + "\r\n");
                 }
-
-                input.innerHTML = ''; // Очистка
-                setTimeout(function() { input.focus(); }, 10);
+                
+                input.innerHTML = '';
             }
         }
     </script>
