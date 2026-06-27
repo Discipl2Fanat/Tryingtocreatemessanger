@@ -87,28 +87,42 @@
         }
 
         function initP2P() {
-            // Подключаемся к публичному вебсокет-серверу связи
-            client = mqtt.connect('wss://://hivemq.com');
+    // Генерируем случайный ID для каждого вошедшего, чтобы сервер их не путал
+    var randomId = 'user_' + Math.random().toString(36).substr(2, 9);
 
-            client.on('connect', function() {
-                client.subscribe(CHAT_ROOM);
-            });
+    // Подключаемся через стандартный HTTPS порт 443, который разрешен везде
+    client = mqtt.connect('wss://://hivemq.com', {
+        clientId: randomId,
+        keepalive: 60,
+        reconnectPeriod: 1000 // Если связь оборвется, браузер сам переподключится через 1 секунду
+    });
 
-            // ПРИЕМ СООБЩЕНИЙ ИЗ СЕТИ ОТ ДРУГИХ
-            client.on('message', function(topic, message) {
-                if (topic === CHAT_ROOM) {
-                    try {
-                        var incomingData = JSON.parse(message.toString());
-                        
-                        // Игнорируем свое сообщение из сети, чтобы не было дубля
-                        if (incomingData.sender === myName) return; 
-                        
-                        var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + incomingData.sender + ':</span><span>' + incomingData.text + '</span>';
-                        displayMessage(fullHtmlMessage);
-                    } catch(e) {
-                        console.error(e);
-                    }
-                }
+    client.on('connect', function() {
+        console.log("Сеть успешно подключена!");
+        client.subscribe(CHAT_ROOM);
+    });
+
+    // ПРИЕМ СООБЩЕНИЙ ИЗ СЕТИ
+    client.on('message', function(topic, message) {
+        if (topic === CHAT_ROOM) {
+            try {
+                var incomingData = JSON.parse(message.toString());
+
+                // Игнорируем свое собственное сообщение из сети (мы его уже вывели локально)
+                if (incomingData.sender === myName) return; 
+
+                var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + incomingData.sender + ':</span><span>' + incomingData.text + '</span>';
+                displayMessage(fullHtmlMessage);
+            } catch(e) {
+                console.error("Ошибка сети:", e);
+            }
+        }
+    });
+
+    client.on('error', function(err) {
+        console.error("Ошибка подключения к сети:", err);
+    });
+}
             });
         }
 
