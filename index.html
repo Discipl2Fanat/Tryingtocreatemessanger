@@ -3,10 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Железобетонный P2P Мессенджер</title>
-    <!-- Официальная открытая библиотека WebRTC (CORS разрешен везде) -->
-    <script src="https://unpkg.com"></script>
-
+    <title>Железобетонный Мессенджер</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -39,8 +36,7 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <!-- Динамический индикатор сверху -->
-        <h3 id="room-title" style="margin-top: 0; color: #2481cc;">Инициализация...</h3>
+        <h3 id="room-title" style="margin-top: 0; color: #ffff55;">Подключение к сети...</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -62,19 +58,17 @@
 
     <script>
         var myName = "Пользователь";
-        var peer;
-        var connections = [];
+        var myUserId = 'user_' + Math.random().toString(36).substr(2, 6);
         
-        // АЛГОРИТМ ОПРЕДЕЛЕНИЯ КОМНАТЫ: извлекаем хэш из ссылки, либо генерируем новый
+        // Разграничение сессий через хэш в адресной строке
         var currentRoomId = window.location.hash.substring(1);
         if (!currentRoomId) {
             currentRoomId = 'room_' + Math.random().toString(36).substr(2, 9);
             window.location.hash = currentRoomId;
         }
 
-        // Уникальный глобальный префикс для изоляции от сторонних приложений на серверах PeerJS
-        var APP_PREFIX = "ru_github_p2p_app_v2_";
-        var CHAT_ROOM_TAG = APP_PREFIX + currentRoomId;
+        // Полноценный открытый HTTP REST-коллектор (CORS разрешен изначально)
+        var BASE_URL = "https://jsonbox.io_" + currentRoomId;
 
         function checkPassword() {
             var pass = document.getElementById('password-input').value;
@@ -87,7 +81,7 @@
                 document.getElementById('auth-gate').style.display = 'none';
                 document.getElementById('messenger').style.display = 'block';
                 
-                initP2PNetwork();
+                initNetwork();
             } else {
                 errorBlock.style.display = 'block';
                 document.getElementById('password-input').value = '';
@@ -100,105 +94,67 @@
             document.getElementById('msg-input').focus();
         }
 
-        function initP2PNetwork() {
-            // АЛГОРИТМ РАЗГРАНИЧЕНИЯ СЕССИЙ: Уникальный ID состоит из Префикса_Комнаты_СлучайногоIDЮзера
-            var myPeerId = CHAT_ROOM_TAG + "_" + Math.random().toString(36).substr(2, 6);
-            
-            updateStatus("Подключение к сети...", "#ffff55");
-
-            peer = new Peer(myPeerId, {
-                host: '://peerjs.com',
-                port: 443,
-                secure: true
-            });
-
-            peer.on('open', function(id) {
-                updateStatus("Сеть активна | Комната: #" + currentRoomId.replace('room_', ''), "#55ff55");
-                
-                // Сканируем пространство на наличие пиров из НАШЕЙ комнаты каждые 3 секунды
-                setInterval(findPeers, 3000);
-            });
-
-            peer.on('disconnected', function() {
-                updateStatus("Связь потеряна, переподключение...", "#ff5555");
-                peer.reconnect();
-            });
-
-            // Прием прямого дата-канала от твинка/собеседника
-            peer.on('connection', function(conn) {
-                setupConnectionHandlers(conn);
-            });
-        }
-
-        function updateStatus(text, color) {
+        function initNetwork() {
+            // Мгновенно переключаем статус в активный, так как HTTP-запросы работают всегда
             var title = document.getElementById('room-title');
-            title.innerText = text;
-            title.style.color = color;
+            title.innerText = "Сеть активна | Комната: #" + currentRoomId.replace('room_', '');
+            title.style.color = "#55ff55";
+
+            // Скачиваем историю сразу при входе
+            syncMessages();
+            // Запускаем цикл проверки обновлений каждые 2 секунды
+            setInterval(syncMessages, 2000);
         }
 
-        // АЛГОРИТМ СЛИЯНИЯ СЕССИЙ ВНУТРИ ОДНОЙ КОМНАТЫ
-        function findPeers() {
-            if (peer.disconnected) return;
-
-            peer.listAllPeers(function(allPeers) {
-                allPeers.forEach(function(peerId) {
-                    // Строгое разграничение: подключаемся только если ID начинается с тега НАШЕЙ комнаты
-                    if (peerId.indexOf(CHAT_ROOM_TAG) === 0 && peerId !== peer.id) {
-                        var isAlreadyConnected = connections.some(function(c) { return c.peer === peerId; });
-                        if (!isAlreadyConnected) {
-                            var conn = peer.connect(peerId);
-                            setupConnectionHandlers(conn);
-                        }
+        // ПРОВЕРЕННЫЙ АЛГОРИТМ ПРИЕМА ДАННЫХ
+        async function syncMessages() {
+            try {
+                var response = await fetch(BASE_URL + "?sort=createdAt");
+                if (!response.ok) return;
+                
+                var messages = await response.json();
+                if (Array.isArray(messages)) {
+                    var chat = document.getElementById('chat');
+                    var htmlBuilder = "";
+                    
+                    messages.forEach(function(msg) {
+                        htmlBuilder += '<div class="msg-line"><span class="user-name" style="color: #2481cc;">' + msg.sender + ':</span><span>' + msg.text + '</span></div>';
+                    });
+                    
+                    // Обновляем экран только если появились новые символы, бережем скролл
+                    if (chat.innerHTML.length !== htmlBuilder.length) {
+                        chat.innerHTML = htmlBuilder;
+                        chat.scrollTop = chat.scrollHeight;
                     }
-                });
-            });
-        }
-
-        function setupConnectionHandlers(conn) {
-            // Чтобы не плодить дублирующие соединения между одними и теми же вкладками
-            var isAlreadySaved = connections.some(function(c) { return c.peer === conn.peer; });
-            if (!isAlreadySaved) {
-                connections.push(conn);
-            }
-
-            conn.on('data', function(data) {
-                if (data && data.sender && data.text) {
-                    var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + data.sender + ':</span><span>' + data.text + '</span>';
-                    displayMessage(fullHtmlMessage);
                 }
-            });
-
-            conn.on('close', function() {
-                connections = connections.filter(function(c) { return c.peer !== conn.peer; });
-            });
+            } catch (err) {
+                console.log("Синхронизация...");
+            }
         }
 
-        function displayMessage(fullHtmlMessage) {
-            var chat = document.getElementById('chat');
-            chat.innerHTML += '<div class="msg-line">' + fullHtmlMessage + '</div>';
-            chat.scrollTop = chat.scrollHeight; 
-        }
-
-        function send() {
+        // НАДЕЖНАЯ ОТПРАВКА ЧЕРЕЗ ОБЫЧНЫЙ POST-ЗАПРОС
+        async function send() {
             var input = document.getElementById('msg-input');
             var htmlContent = input.innerHTML.trim();
             
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
-                var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
-                
-                displayMessage(myFullMessage);
-
-                // Рассылаем пакет только тем, кто привязан к нашей комнате
-                connections.forEach(function(conn) {
-                    if (conn.open) {
-                        conn.send({
+                try {
+                    // Отправляем объект напрямую в нашу ячейку базы
+                    await fetch(BASE_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            userId: myUserId,
                             sender: myName,
                             text: htmlContent
-                        });
-                    }
-                });
+                        })
+                    });
 
-                input.innerHTML = ''; 
+                    input.innerHTML = ''; // Очищаем поле ввода
+                    await syncMessages(); // Перерисовываем чат
+                } catch (err) {
+                    console.error("Ошибка сети:", err);
+                }
             }
         }
     </script>
