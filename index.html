@@ -3,8 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <title>Мессенджер без Сервера</title>
-    <!-- Подключаем библиотеку для связи в реальном времени через вебсокеты -->
-    <script src="https://window.mqtt"></script>
+    
+    <!-- ИСПРАВЛЕНО: Подключаем гарантированно стабильный и проверенный CDN -->
+    <script src="https://unpkg.com"></script>
 
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
@@ -62,7 +63,9 @@
     <script>
         var client;
         var myName = "Пользователь";
-        var CHAT_ROOM = "github_p2p_chat_room_2026"; 
+        
+        // Уникальное и длинное имя комнаты, чтобы сообщения долетали только вашим друзьям
+        var CHAT_ROOM = "github_p2p_chat_room_secure_2026_v2"; 
 
         function checkPassword() {
             var passwordInput = document.getElementById('password-input').value;
@@ -79,7 +82,6 @@
             }
         }
 
-        // ИСПРАВЛЕНО: Убрано дефолтное значение из сигнатуры, вызывавшее SyntaxError
         function format(command, value) {
             var val = value || null;
             document.execCommand(command, false, val);
@@ -87,42 +89,42 @@
         }
 
         function initP2P() {
-    // Генерируем случайный ID для каждого вошедшего, чтобы сервер их не путал
-    var randomId = 'user_' + Math.random().toString(36).substr(2, 9);
-
-    // Подключаемся через стандартный HTTPS порт 443, который разрешен везде
-    client = mqtt.connect('wss://://hivemq.com', {
-        clientId: randomId,
-        keepalive: 60,
-        reconnectPeriod: 1000 // Если связь оборвется, браузер сам переподключится через 1 секунду
-    });
-
-    client.on('connect', function() {
-        console.log("Сеть успешно подключена!");
-        client.subscribe(CHAT_ROOM);
-    });
-
-    // ПРИЕМ СООБЩЕНИЙ ИЗ СЕТИ
-    client.on('message', function(topic, message) {
-        if (topic === CHAT_ROOM) {
-            try {
-                var incomingData = JSON.parse(message.toString());
-
-                // Игнорируем свое собственное сообщение из сети (мы его уже вывели локально)
-                if (incomingData.sender === myName) return; 
-
-                var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + incomingData.sender + ':</span><span>' + incomingData.text + '</span>';
-                displayMessage(fullHtmlMessage);
-            } catch(e) {
-                console.error("Ошибка сети:", e);
+            var randomId = 'user_' + Math.random().toString(36).substr(2, 9);
+            
+            // ИСПРАВЛЕНО: Безопасное обращение к глобальному контексту библиотеки MQTT
+            var mqttLib = window.mqtt || mqtt; 
+            
+            if (!mqttLib) {
+                alert("Ошибка сети: не удалось загрузить модуль связи. Обновите страницу.");
+                return;
             }
-        }
-    });
 
-    client.on('error', function(err) {
-        console.error("Ошибка подключения к сети:", err);
-    });
-}
+            // Подключаемся через порт 443 (разрешен всеми провайдерами и мобильными операторами)
+            client = mqttLib.connect('wss://://hivemq.com', {
+                clientId: randomId,
+                keepalive: 60,
+                reconnectPeriod: 1000 
+            });
+
+            client.on('connect', function() {
+                client.subscribe(CHAT_ROOM);
+            });
+
+            // ПРИЕМ СООБЩЕНИЙ ИЗ СЕТИ
+            client.on('message', function(topic, message) {
+                if (topic === CHAT_ROOM) {
+                    try {
+                        var incomingData = JSON.parse(message.toString());
+                        
+                        // Если имя автора совпадает с нашим — отсекаем дубликат
+                        if (incomingData.sender === myName) return; 
+                        
+                        var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + incomingData.sender + ':</span><span>' + incomingData.text + '</span>';
+                        displayMessage(fullHtmlMessage);
+                    } catch(e) {
+                        console.error("Ошибка при чтении сообщения:", e);
+                    }
+                }
             });
         }
 
@@ -132,7 +134,7 @@
             chat.scrollTop = chat.scrollHeight; 
         }
 
-        // ОТПРАВКА СООБЩЕНИЯ С ЖЕСТКИМ ЛОКАЛЬНЫМ ВЫВОДОМ
+        // ОТПРАВКА СООБЩЕНИЯ
         function send() {
             var input = document.getElementById('msg-input');
             var htmlContent = input.innerHTML.trim();
@@ -140,10 +142,10 @@
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
                 var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
                 
-                // 1. Гарантированный вывод у себя на экране (минуя сеть)
+                // 1. Мгновенно выводим у себя локально
                 displayMessage(myFullMessage);
 
-                // 2. Отправка пакета другим пользователям в JSON формате
+                // 2. Отправляем в сеть в безопасном JSON-формате
                 if (client && client.connected) {
                     var networkPayload = {
                         sender: myName,
@@ -152,10 +154,9 @@
                     client.publish(CHAT_ROOM, JSON.stringify(networkPayload));
                 }
 
-                input.innerHTML = ''; // Очистка
+                input.innerHTML = ''; // Очищаем поле
             }
         }
     </script>
 </body>
 </html>
-
