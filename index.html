@@ -3,9 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Стабильный P2P Мессенджер</title>
-    <!-- Подключаем официальный, неубиваемый инструмент для связи между устройствами -->
-    <script src="https://pubnub.com"></script>
+    <title>Наш P2P Мессенджер</title>
+    <!-- Подключаем легкую библиотеку связи прямо из надежного архива cdnjs -->
+    <script src="https://cloudflare.com"></script>
 
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
@@ -39,7 +39,7 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <h3 style="margin-top: 0; color: #2481cc;">Глобальная P2P комната</h3>
+        <h3 style="margin-top: 0; color: #2481cc;">Наша общая P2P комната</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -61,9 +61,10 @@
 
     <script>
         var myName = "Пользователь";
-        var pubnubClient;
+        var client;
         
-        var CHAT_ROOM_ID = "github_global_secure_room_2026_v12"; 
+        // Уникальное имя секретного канала. Сделайте его подлиннее, чтобы никто чужой не вклинился.
+        var CHAT_ROOM_ID = "ru_github_p2p_secure_room_2026_v15"; 
         var myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
 
         function checkPassword() {
@@ -89,29 +90,35 @@
         }
 
         function initGlobalNetwork() {
-            // Подключаемся через вечный бесплатный глобальный ключ PubNub
-            pubnubClient = new PubNub({
-                publishKey: 'pub-c-49779df5-bc65-4f40-86cc-e7fcbaef22f3',
-                subscribeKey: 'sub-c-cb43b09a-b44c-473d-9d7a-7bf62cbf7df9',
-                userId: myUserId
+            // Подключаемся к бесплатному публичному российскому MQTT-брокеру через защищенный вебсокет-порт
+            var mqttLib = window.mqtt || mqtt;
+            if (!mqttLib) return;
+
+            client = mqttLib.connect('wss://wsmqtt.eclipse.ru:443/mqtt', {
+                clientId: myUserId,
+                keepalive: 60,
+                reconnectPeriod: 1000
             });
 
-            // Настраиваем приемщик входящих сообщений
-            pubnubClient.addListener({
-                message: function(event) {
-                    var payload = event.message;
-                    
-                    // Если сообщение пришло от твинка или другого человека — выводим на экран
-                    if (payload && payload.userId !== myUserId) {
-                        var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + payload.sender + ':</span><span>' + payload.text + '</span>';
-                        displayMessage(fullHtmlMessage);
+            client.on('connect', function() {
+                // Подписываемся на нашу комнату
+                client.subscribe(CHAT_ROOM_ID);
+            });
+
+            client.on('message', function(topic, message) {
+                if (topic === CHAT_ROOM_ID) {
+                    try {
+                        var payload = JSON.parse(message.toString());
+                        
+                        // Если сообщение пришло от твинка — отрисовываем его
+                        if (payload && payload.userId !== myUserId) {
+                            var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + payload.sender + ':</span><span>' + payload.text + '</span>';
+                            displayMessage(fullHtmlMessage);
+                        }
+                    } catch(e) {
+                        console.error("Ошибка парсинга:", e);
                     }
                 }
-            });
-
-            // Подписываемся на нашу комнату
-            pubnubClient.subscribe({
-                channels: [CHAT_ROOM_ID]
             });
         }
 
@@ -128,19 +135,17 @@
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
                 var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
                 
-                // 1. Мгновенно отрисовываем у себя локально
+                // 1. Моментально показываем у себя на экране
                 displayMessage(myFullMessage);
 
-                // 2. Транслируем чистый JSON во всемирную сеть для остальных людей
-                if (pubnubClient) {
-                    pubnubClient.publish({
-                        channel: CHAT_ROOM_ID,
-                        message: {
-                            userId: myUserId,
-                            sender: myName,
-                            text: htmlContent
-                        }
-                    });
+                // 2. Отправляем в сеть чистый безопасный JSON-пакет для твинка
+                if (client && client.connected) {
+                    var packet = {
+                        userId: myUserId,
+                        sender: myName,
+                        text: htmlContent
+                    };
+                    client.publish(CHAT_ROOM_ID, JSON.stringify(packet));
                 }
 
                 input.innerHTML = ''; 
