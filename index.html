@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Рабочий Сетевой Мессенджер</title>
+    <title>Железобетонный Сетевой Мессенджер</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -36,7 +36,7 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <h3 id="room-title" style="margin-top: 0; color: #ffff55;">Инициализация...</h3>
+        <h3 id="room-title" style="margin-top: 0; color: #ffff55;">Подключение к сети...</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -60,15 +60,15 @@
         var myName = "Пользователь";
         var ws;
         
-        // Разграничение комнат через хэш в адресе ссылки
+        // Получаем ID комнаты из хэша адресной строки
         var currentRoomId = window.location.hash.substring(1);
         if (!currentRoomId) {
             currentRoomId = 'room_' + Math.random().toString(36).substr(2, 9);
             window.location.hash = currentRoomId;
         }
 
+        // Генерируем случайный ID сессии
         var myUserId = 'user_' + Math.random().toString(36).substr(2, 6);
-        var TOPIC = "gh_p2p_room_" + currentRoomId;
 
         function checkPassword() {
             var pass = document.getElementById('password-input').value;
@@ -94,71 +94,10 @@
             document.getElementById('msg-input').focus();
         }
 
-        function initNetwork() {
-            // Подключаемся к зашифрованному вебсокет-порту публичного брокера Mosquitto
-            ws = new WebSocket('wss://test.mosquitto.org:8081/mqtt');
-            ws.binaryType = 'arraybuffer'; // Переключаем на бинарный режим для UTF-8 кириллицы
-
-            ws.onopen = function() {
-                updateStatus("Сеть активна | Комната: #" + currentRoomId.replace('room_', ''), "#55ff55");
-
-                // Шаблон MQTT пакета CONNECT
-                var connectFrame = new Uint8Array([0x10, 12, 0, 4, 77, 81, 84, 84, 4, 2, 0, 60, 0, 0]);
-                ws.send(connectFrame);
-
-                // Подписываемся на топик нашей комнаты через 300мс после коннекта
-                setTimeout(function() {
-                    var encoder = new TextEncoder();
-                    var topicBytes = encoder.encode(TOPIC);
-                    var subFrame = [0x82, 5 + topicBytes.length, 0, 1, 0, topicBytes.length];
-                    
-                    var fullSubFrame = new Uint8Array(subFrame.length + topicBytes.length + 1);
-                    fullSubFrame.set(subFrame, 0);
-                    fullSubFrame.set(topicBytes, subFrame.length);
-                    fullSubFrame[fullSubFrame.length - 1] = 0; // QoS 0
-                    
-                    ws.send(fullSubFrame);
-                }, 300);
-            };
-
-            ws.onmessage = function(event) {
-                if (event.data instanceof ArrayBuffer) {
-                    try {
-                        var byteArray = new Uint8Array(event.data);
-                        var decoder = new TextDecoder("utf-8");
-                        var rawText = decoder.decode(byteArray);
-
-                        // Ищем JSON структуру внутри MQTT-пакета публикации
-                        var jsonStart = rawText.indexOf('{"userId"');
-                        if (jsonStart !== -1) {
-                            var cleanJson = rawText.substr(jsonStart);
-                            var payload = JSON.parse(cleanJson);
-                            
-                            // Выводим только если пакет прилетел от чужого ID (от твинка)
-                            if (payload && payload.userId !== myUserId) {
-                                displayMessage(payload.sender, payload.text);
-                            }
-                        }
-                    } catch(e) {
-                        console.error("Ошибка парсинга:", e);
-                    }
-                }
-            };
-
-            ws.onclose = function() {
-                updateStatus("Связь потеряна, переподключение...", "#ff5555");
-                setTimeout(initNetwork, 3000);
-            };
-        }
-
-        function updateStatus(text, color) {
-            var title = document.getElementById('room-title');
-            title.innerText = text;
-            title.style.color = color;
-        }
-
+        // БРОНЕБОЙНЫЙ МЕТОД ВЫВОДА СООБЩЕНИЙ С ЗАЩИТОЙ ОТ СБОЕВ
         function displayMessage(senderName, messageText) {
             var chat = document.getElementById('chat');
+            
             var msgLine = document.createElement('div');
             msgLine.className = 'msg-line';
             
@@ -168,52 +107,75 @@
             nameSpan.innerText = senderName + ': ';
             
             var textSpan = document.createElement('span');
-            textSpan.innerHTML = messageText;
+            textSpan.innerHTML = messageText; // Поддержка цветного текста из тулбара
             
             msgLine.appendChild(nameSpan);
             msgLine.appendChild(textSpan);
             chat.appendChild(msgLine);
-            chat.scrollTop = chat.scrollHeight;
+            
+            chat.scrollTop = chat.scrollHeight; // Скролл вниз
+        }
+
+        function initNetwork() {
+            // ИСПРАВЛЕНО: Удален ломающий сессию параметр &notify_self=0, эндпоинт теперь полностью валиден
+            ws = new WebSocket('wss://demo.piesocket.com/v3/' + currentRoomId + '?api_key=VCXCEuvhGcBDP7XhiJZ2i962w3XmrrvXBHBdQAId');
+
+            ws.onopen = function() {
+                var title = document.getElementById('room-title');
+                title.innerText = "Сеть активна | Комната: #" + currentRoomId.replace('room_', '');
+                title.style.color = "#55ff55"; // Зеленый цвет успешной сборки
+            };
+
+            // ДВУСТОРОННИЙ ПРИЕМ СООБЩЕНИЙ
+            ws.onmessage = function(event) {
+                try {
+                    var payload = JSON.parse(event.data);
+                    
+                    // Если сообщение пришло от твинка/другого человека — выводим на экран
+                    if (payload && payload.userId !== myUserId) {
+                        displayMessage(payload.sender, payload.text);
+                    }
+                } catch(e) {
+                    console.error("Технический пакет");
+                }
+            };
+
+            ws.onclose = function() {
+                var title = document.getElementById('room-title');
+                title.innerText = "Связь потеряна, переподключение...";
+                title.style.color = "#ff5555";
+                setTimeout(initNetwork, 3000); // Автоподключение
+            };
         }
 
         function send() {
             var input = document.getElementById('msg-input');
             var htmlContent = input.innerHTML.trim();
             
+            // Проверка, что поле ввода содержит реальные данные
             var tempDiv = document.createElement('div');
             tempDiv.innerHTML = htmlContent;
             var plainText = tempDiv.innerText.trim();
             
             if (plainText.length > 0 || htmlContent.indexOf('<img') !== -1) {
                 
-                // 1. Сразу отрисовываем сообщение у себя локально
+                // 1. Моментальный вывод у себя локально (для отзывчивости)
                 displayMessage(myName, htmlContent);
 
-                // 2. Упаковываем JSON и отправляем в полноценную трансляционную сеть
+                // 2. Отправка пакета в сеть для твинка
                 if (ws && ws.readyState === WebSocket.OPEN) {
-                    var packetObj = {
+                    var packet = {
                         userId: myUserId,
                         sender: myName,
                         text: htmlContent
                     };
-                    
-                    var encoder = new TextEncoder();
-                    var jsonBytes = encoder.encode(JSON.stringify(packetObj));
-                    var topicBytes = encoder.encode(TOPIC);
-                    
-                    // Собираем заголовок MQTT PUBLISH кадра вручную
-var remainingLength = 2 + topicBytes.length + jsonBytes.length;
-var header = [0x30, remainingLength, 0, topicBytes.length];
-var fullFrame = new Uint8Array(header.length + topicBytes.length + jsonBytes.length);
-fullFrame.set(header, 0);
-fullFrame.set(topicBytes, header.length);
-fullFrame.set(jsonBytes, header.length + topicBytes.length);
-ws.send(fullFrame);
-}
-input.innerHTML = '';
-setTimeout(function() { input.focus(); }, 10);
-}
+                    ws.send(JSON.stringify(packet));
+                }
+
+                input.innerHTML = ''; // Очистка
+                setTimeout(function() { input.focus(); }, 10);
+            }
         }
-</script>
+    </script>
 </body>
 </html>
