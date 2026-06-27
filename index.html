@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <title>Мессенджер без Сервера</title>
-    <!-- Подключаем легкую библиотеку для связи в реальном времени через вебсокеты -->
+    <!-- Подключаем библиотеку для связи в реальном времени через вебсокеты -->
     <script src="https://unpkg.com"></script>
 
     <style>
@@ -39,7 +39,7 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <h3 style="margin-top: 0; color: #2481cc;">Общая комната (P2P сеть)</h3>
+        <h3 style="margin-top: 0; color: #2481cc;">Общая комната</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -60,83 +60,88 @@
     </div>
 
     <script>
-        let client;
-let myName = "Пользователь";
+        var client;
+        var myName = "Пользователь";
+        var CHAT_ROOM = "github_p2p_chat_room_2026"; 
 
-// Имя комнаты. Сделайте его уникальным
-const CHAT_ROOM = "my_secret_github_chat_room_1984"; 
-
-function checkPassword() {
-    const passwordInput = document.getElementById('password-input').value;
-    const errorBlock = document.getElementById('error-msg');
-    myName = document.getElementById('username-input').value.trim() || "Пользователь";
-    
-    if (passwordInput === "12345") { 
-        document.getElementById('auth-gate').style.display = 'none';
-        document.getElementById('messenger').style.display = 'block';
-        initP2P(); 
-    } else {
-        errorBlock.style.display = 'block';
-        document.getElementById('password-input').value = '';
-    }
-}
-
-function format(command, value = null) {
-    document.execCommand(command, false, value);
-    document.getElementById('msg-input').focus();
-}
-
-// ИНИЦИАЛИЗАЦИЯ СВЯЗИ
-function initP2P() {
-    client = mqtt.connect('wss://://hivemq.com');
-
-    client.on('connect', () => {
-        client.subscribe(CHAT_ROOM);
-    });
-
-    // ПРИЕМ СООБЩЕНИЙ ОТ ДРУГИХ ПОЛЬЗОВАТЕЛЕЙ
-    client.on('message', (topic, message) => {
-        if (topic === CHAT_ROOM) {
-            const incomingData = JSON.parse(message.toString());
+        function checkPassword() {
+            var passwordInput = document.getElementById('password-input').value;
+            var errorBlock = document.getElementById('error-msg');
+            myName = document.getElementById('username-input').value.trim() || "Пользователь";
             
-            // Если имя отправителя совпадает с вашим, игнорируем (так как мы уже отрисовали его локально)
-            if (incomingData.sender === myName) return; 
-            
-            displayMessage(incomingData.text);
-        }
-    });
-}
-
-function displayMessage(fullHtmlMessage) {
-    const chat = document.getElementById('chat');
-    chat.innerHTML += `<div class="msg-line">${fullHtmlMessage}</div>`;
-    chat.scrollTop = chat.scrollHeight; 
-}
-
-// ОТПРАВКА СООБЩЕНИЯ С ДУБЛИРОВАНИЕМ ЛОГИКИ
-function send() {
-    const input = document.getElementById('msg-input');
-    const htmlContent = input.innerHTML.trim();
-    
-    if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
-        const myFullMessage = `<span class="user-name" style="color: #2481cc;">${myName}:</span><span>${htmlContent}</span>`;
-        
-        // 1. Логика для МЕНЯ: Выводим на экран мгновенно без задержек сети
-        displayMessage(myFullMessage);
-
-        // 2. Логика для НИХ: Упаковываем текст и имя автора, затем отправляем в сеть
-        if (client && client.connected) {
-            const networkPayload = {
-                sender: myName,
-                text: myFullMessage
-            };
-            client.publish(CHAT_ROOM, JSON.stringify(networkPayload));
+            if (passwordInput === "12345") { 
+                document.getElementById('auth-gate').style.display = 'none';
+                document.getElementById('messenger').style.display = 'block';
+                initP2P(); 
+            } else {
+                errorBlock.style.display = 'block';
+                document.getElementById('password-input').value = '';
+            }
         }
 
-        input.innerHTML = ''; // Очищаем поле ввода
-    }
-}
+        // ИСПРАВЛЕНО: Убрано дефолтное значение из сигнатуры, вызывавшее SyntaxError
+        function format(command, value) {
+            var val = value || null;
+            document.execCommand(command, false, val);
+            document.getElementById('msg-input').focus();
+        }
 
+        function initP2P() {
+            // Подключаемся к публичному вебсокет-серверу связи
+            client = mqtt.connect('wss://://hivemq.com');
+
+            client.on('connect', function() {
+                client.subscribe(CHAT_ROOM);
+            });
+
+            // ПРИЕМ СООБЩЕНИЙ ИЗ СЕТИ ОТ ДРУГИХ
+            client.on('message', function(topic, message) {
+                if (topic === CHAT_ROOM) {
+                    try {
+                        var incomingData = JSON.parse(message.toString());
+                        
+                        // Игнорируем свое сообщение из сети, чтобы не было дубля
+                        if (incomingData.sender === myName) return; 
+                        
+                        var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + incomingData.sender + ':</span><span>' + incomingData.text + '</span>';
+                        displayMessage(fullHtmlMessage);
+                    } catch(e) {
+                        console.error(e);
+                    }
+                }
+            });
+        }
+
+        function displayMessage(fullHtmlMessage) {
+            var chat = document.getElementById('chat');
+            chat.innerHTML += '<div class="msg-line">' + fullHtmlMessage + '</div>';
+            chat.scrollTop = chat.scrollHeight; 
+        }
+
+        // ОТПРАВКА СООБЩЕНИЯ С ЖЕСТКИМ ЛОКАЛЬНЫМ ВЫВОДОМ
+        function send() {
+            var input = document.getElementById('msg-input');
+            var htmlContent = input.innerHTML.trim();
+            
+            if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
+                var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
+                
+                // 1. Гарантированный вывод у себя на экране (минуя сеть)
+                displayMessage(myFullMessage);
+
+                // 2. Отправка пакета другим пользователям в JSON формате
+                if (client && client.connected) {
+                    var networkPayload = {
+                        sender: myName,
+                        text: htmlContent
+                    };
+                    client.publish(CHAT_ROOM, JSON.stringify(networkPayload));
+                }
+
+                input.innerHTML = ''; // Очистка
+            }
+        }
     </script>
 </body>
 </html>
+
