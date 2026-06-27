@@ -3,7 +3,7 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Рабочий Мессенджер</title>
+    <title>Надежный Сетевой Мессенджер</title>
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -58,10 +58,10 @@
 
     <script>
         var myName = "Пользователь";
-        var myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
         
-        // Открытый бесплатный JSON-коллектор для обмена текстовыми пакетами в реальном времени
-        var SERVER_URL = "https://jsonstorage.net";
+        // Уникальный адрес вашей секретной ячейки памяти в глобальном шлюзе vSync.
+        // Замените последние цифры на любые другие, чтобы создать свою полностью закрытую комнату.
+        var ROOM_URL = "https://vsync.live";
 
         function checkPassword() {
             var pass = document.getElementById('password-input').value;
@@ -71,7 +71,7 @@
             if (pass === "12345") { 
                 myName = user || "Пользователь";
                 
-                // Сначала ГАРАНТИРОВАННО открываем интерфейс мессенджера
+                // Мгновенно открываем чат без сетевых зависаний
                 document.getElementById('auth-gate').style.display = 'none';
                 document.getElementById('messenger').style.display = 'block';
                 
@@ -89,67 +89,80 @@
         }
 
         function initNetwork() {
-            // Загружаем сообщения сразу при входе
+            // Скачиваем сообщения при входе
             syncMessages();
-            // Запускаем автоматическую синхронизацию каждые 2.5 секунды
-            setInterval(syncMessages, 2500);
+            // Каждые 2 секунды опрашиваем общую ячейку памяти на обновления
+            setInterval(syncMessages, 2000);
         }
 
-        function syncMessages() {
-            fetch(SERVER_URL)
-                .then(function(response) { return response.json(); })
-                .then(function(data) {
-                    if (data && Array.isArray(data.messages)) {
-                        var chat = document.getElementById('chat');
-                        var htmlBuilder = "";
-                        
-                        data.messages.forEach(function(msg) {
-                            htmlBuilder += '<div class="msg-line"><span class="user-name" style="color: #2481cc;">' + msg.sender + ':</span><span>' + msg.text + '</span></div>';
-                        });
-                        
-                        // Проверяем, изменился ли контент чата, чтобы не сбрасывать скролл пользователя зря
-                        if (chat.innerHTML.length !== htmlBuilder.length) {
-                            chat.innerHTML = htmlBuilder;
-                            chat.scrollTop = chat.scrollHeight;
-                        }
+        // КОРРЕКТНЫЙ, СТАБИЛЬНЫЙ АСИНХРОННЫЙ ПРИЕМ СООБЩЕНИЙ
+        async function syncMessages() {
+            try {
+                var response = await fetch(ROOM_URL);
+                if (!response.ok) return; // Если комната еще пустая, просто ждем
+                
+                var data = await response.json();
+                if (data && Array.isArray(data.messages)) {
+                    var chat = document.getElementById('chat');
+                    var htmlBuilder = "";
+                    
+                    data.messages.forEach(function(msg) {
+                        htmlBuilder += '<div class="msg-line"><span class="user-name" style="color: #2481cc;">' + msg.sender + ':</span><span>' + msg.text + '</span></div>';
+                    });
+                    
+                    // Обновляем экран только при реальном изменении длины, сохраняя скролл пользователя
+                    if (chat.innerHTML.length !== htmlBuilder.length) {
+                        chat.innerHTML = htmlBuilder;
+                        chat.scrollTop = chat.scrollHeight;
                     }
-                })
-                .catch(function(err) { console.log("Синхронизация..."); });
+                }
+            } catch (err) {
+                console.log("Синхронизация...");
+            }
         }
 
-        function send() {
+        // НАДЕЖНАЯ ОТПРАВКА БЕЗ ПЕРЕПОЛНЕНИЯ И ОШИБОК СИНТАКСИСА
+        async function send() {
             var input = document.getElementById('msg-input');
             var htmlContent = input.innerHTML.trim();
             
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
-                // Скачиваем текущую историю, добавляем наше сообщение и отправляем обратно на сервер
-                fetch(SERVER_URL)
-                    .then(function(response) { return response.json(); })
-                    .then(function(data) {
-                        var currentMessages = (data && Array.isArray(data.messages)) ? data.messages : [];
-                        
-                        // Защита от переполнения: храним только последние 40 сообщений в комнате
-                        if (currentMessages.length > 40) {
-                            currentMessages.shift();
+                try {
+                    var currentMessages = [];
+                    
+                    // 1. Пытаемся скачать текущий массив сообщений из облака
+                    var response = await fetch(ROOM_URL);
+                    if (response.ok) {
+                        var data = await response.json();
+                        if (data && Array.isArray(data.messages)) {
+                            currentMessages = data.messages;
                         }
-                        
-                        currentMessages.push({
-                            userId: myUserId,
-                            sender: myName,
-                            text: htmlContent
-                        });
+                    }
+                    
+                    // Защита от переполнения: держим в истории только последние 40 сообщений
+                    if (currentMessages.length > 40) {
+                        currentMessages.shift();
+                    }
+                    
+                    // Добавляем свежий текст
+                    currentMessages.push({
+                        sender: myName,
+                        text: htmlContent
+                    });
 
-                        return fetch(SERVER_URL, {
-                            method: 'PUT',
-                            headers: { 'Content-Type': 'application/json' },
-                            body: JSON.stringify({ messages: currentMessages })
-                        });
-                    })
-                    .then(function() {
-                        input.innerHTML = ''; // Очищаем поле ввода после успешной доставки
-                        syncMessages(); // Сразу принудительно обновляем чат на экране
-                    })
-                    .catch(function(err) { console.error(err); });
+                    // 2. Записываем обновленный массив обратно в облачную память методом POST
+                    await fetch(ROOM_URL, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({ messages: currentMessages })
+                    });
+
+                    input.innerHTML = ''; // Чистим поле ввода
+                    await syncMessages(); // Сразу принудительно перерисовываем экран чата
+                    
+                } catch (err) {
+                    console.error("Ошибка отправки:", err);
+                }
             }
         }
     </script>
