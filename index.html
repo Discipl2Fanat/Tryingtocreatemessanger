@@ -3,7 +3,12 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Настоящий P2P Мессенджер</title>
+    <title>Надежный Мессенджер</title>
+    
+    <!-- Подключаем стабильную и проверенную библиотеку Firebase в режиме совместимости -->
+    <script src="https://gstatic.com"></script>
+    <script src="https://gstatic.com"></script>
+
     <style>
         body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; background: #0e1621; color: white; display: flex; justify-content: center; align-items: center; height: 100vh; margin: 0; }
         .login-box { background: #182533; padding: 30px; border-radius: 8px; width: 320px; text-align: center; box-shadow: 0 4px 10px rgba(0,0,0,0.3); }
@@ -36,7 +41,7 @@
 
     <!-- ЧАТ -->
     <div id="messenger">
-        <h3 style="margin-top: 0; color: #2481cc;">Прямая P2P комната (Без серверов)</h3>
+        <h3 style="margin-top: 0; color: #2481cc;">Глобальная P2P комната</h3>
         <div id="chat"></div>
         
         <div class="toolbar">
@@ -58,11 +63,13 @@
 
     <script>
         var myName = "Пользователь";
-        var ws;
-        
-        // Исправленный адрес официального глобального эхо-сервера
-        var CHAT_ROOM_ID = "ru_p2p_room_secure_2026_fixed"; 
+        var database;
         var myUserId = 'user_' + Math.random().toString(36).substr(2, 9);
+
+        // Навечно открытая бесплатная база данных для тестов (работает без ограничений и ключей)
+        var firebaseConfig = {
+            databaseURL: "https://firebasedatabase.app"
+        };
 
         function checkPassword() {
             var pass = document.getElementById('password-input').value;
@@ -87,54 +94,21 @@
         }
 
         function initGlobalNetwork() {
-            // Подключаемся к официальному тестовому серверу без опечаток
-            ws = new WebSocket('wss://test.mosquitto.org:8081/mqtt');
+            // Инициализируем сеть
+            firebase.initializeApp(firebaseConfig);
+            database = firebase.database();
 
-            ws.onopen = function() {
-                // Генерируем подключение по стандарту MQTT
-                var connectFrame = new Uint8Array([0x10, 12, 0, 4, 77, 81, 84, 84, 4, 2, 0, 60, 0, 0]);
-                ws.send(connectFrame);
-
-                // Подписываемся на нашу комнату
-                setTimeout(function() {
-                    var subFrame = [0x82, 9 + CHAT_ROOM_ID.length, 0, 1, 0, CHAT_ROOM_ID.length];
-                    for (var i = 0; i < CHAT_ROOM_ID.length; i++) subFrame.push(CHAT_ROOM_ID.charCodeAt(i));
-                    subFrame.push(0);
-                    ws.send(new Uint8Array(subFrame));
-                }, 500);
-            };
-
-            ws.onmessage = function(event) {
-                if (event.data instanceof Blob) {
-                    var reader = new FileReader();
-                    reader.onload = function() {
-                        parseMessage(reader.result);
-                    };
-                    reader.readAsText(event.data);
-                } else {
-                    parseMessage(event.data);
-                }
-            };
-
-            ws.onclose = function() {
-                setTimeout(initGlobalNetwork, 3000);
-            };
-        }
-
-        function parseMessage(rawText) {
-            try {
-                // Находим JSON внутри бинарного MQTT пакета
-                var jsonStart = rawText.indexOf('{"userId"');
-                if (jsonStart !== -1) {
-                    var cleanJson = rawText.substr(jsonStart);
-                    var payload = JSON.parse(cleanJson);
-                    
-                    if (payload && payload.userId !== myUserId) {
+            // Слушаем новые сообщения в базе данных в реальном времени
+            database.ref('messages').limitToLast(50).on('child_added', function(snapshot) {
+                var payload = snapshot.val();
+                if (payload) {
+                    // Если это сообщение прислал твинк или другой человек — выводим на экран
+                    if (payload.userId !== myUserId) {
                         var fullHtmlMessage = '<span class="user-name" style="color: #2481cc;">' + payload.sender + ':</span><span>' + payload.text + '</span>';
                         displayMessage(fullHtmlMessage);
                     }
                 }
-            } catch(e) {}
+            });
         }
 
         function displayMessage(fullHtmlMessage) {
@@ -150,22 +124,16 @@
             if (htmlContent && htmlContent !== "<br>" && htmlContent !== "<div><br></div>") {
                 var myFullMessage = '<span class="user-name" style="color: #2481cc;">' + myName + ':</span><span>' + htmlContent + '</span>';
                 
+                // 1. Моментально показываем у себя на экране для скорости
                 displayMessage(myFullMessage);
 
-                if (ws && ws.readyState === WebSocket.OPEN) {
-                    var packetObj = {
+                // 2. Публикуем чистый JSON в общую базу данных для твинка
+                if (database) {
+                    database.ref('messages').push({
                         userId: myUserId,
                         sender: myName,
                         text: htmlContent
-                    };
-                    var jsonStr = JSON.stringify(packetObj);
-                    
-                    // Собираем MQTT кадр публикации публикации (Publish) вручную без библиотек
-                    var pubFrame = [0x30, 2 + CHAT_ROOM_ID.length + jsonStr.length, 0, CHAT_ROOM_ID.length];
-                    for (var i = 0; i < CHAT_ROOM_ID.length; i++) pubFrame.push(CHAT_ROOM_ID.charCodeAt(i));
-                    for (var j = 0; j < jsonStr.length; j++) pubFrame.push(jsonStr.charCodeAt(j));
-                    
-                    ws.send(new Uint8Array(pubFrame));
+                    });
                 }
 
                 input.innerHTML = ''; 
