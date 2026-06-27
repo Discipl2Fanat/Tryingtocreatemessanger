@@ -96,23 +96,31 @@
                 chat.scrollTop = chat.scrollHeight;
             };
         }
-
         function send() {
-            const input = document.getElementById('msg-input');
-            const htmlContent = input.innerHTML.trim();
-            
-            if (htmlContent && ws && ws.readyState === WebSocket.OPEN) {
-                // Упаковываем имя и форматированный текст в одно сообщение
-                const fullMessage = `<span class="user-name" style="color: #2481cc;">${myName}:</span> <span>${htmlContent}</span>`;
-                
-                // Отображаем у себя
-                const chat = document.getElementById('chat');
-                chat.innerHTML += `<div class="msg-line">${fullMessage}</div>`;
-                chat.scrollTop = chat.scrollHeight;
+    // 1. Находим наше красивое поле ввода Rich Text
+    const input = document.getElementById('msg-input');
+    
+    // ПРАВИЛЬНО: Считываем текст со всеми тегами и цветами через innerHTML
+    const htmlContent = input.innerHTML.trim();
+    
+    // Проверяем, что пользователь реально что-то ввел, а не отправил пустоту
+    if (htmlContent && htmlContent !== "<br>") {
+        
+        // Формируем финальную строку: Никнейм + Ваше сообщение
+        const fullMessage = `<span class="user-name" style="color: #2481cc; font-weight: bold;">${myName}:</span> <span>${htmlContent}</span>`;
+        
+        // 2. ОТОБРАЖАЕМ СРАЗУ У СЕБЯ (это заставит сообщение мгновенно появиться на экране)
+        const chat = document.getElementById('chat');
+        chat.innerHTML += `<div class="msg-line" style="margin-bottom: 8px; word-wrap: break-word; text-align: left;">${fullMessage}</div>`;
+        chat.scrollTop = chat.scrollHeight; // Автоматически крутим чат вниз
 
-                // Отправляем в сеть другим пользователям
-                ws.send(fullMessage);
-                input.innerHTML = ''; // Очищаем поле
+        // 3. ОТПРАВЛЯЕМ ДРУГИМ (только если телефон в Termux держит связь)
+        if (ws && ws.readyState === WebSocket.OPEN) {
+            ws.send(fullMessage);
+        }
+
+        // Очищаем поле ввода, чтобы писать заново
+        input.innerHTML = ''; 
             }
         }
     </script>
