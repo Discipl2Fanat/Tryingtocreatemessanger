@@ -43,26 +43,3 @@ if __name__ == "__main__":
         asyncio.run(main())
     except KeyboardInterrupt:
         print("\n[СТОП] Сервер остановлен администратором.")
-function send() {
-    const input = document.getElementById('msg-input');
-    const htmlContent = input.innerHTML.trim();
-    
-    if (htmlContent) {
-        // Формируем красивую строку: Никнейм (синим) + ваше сообщение
-        const fullMessage = `<span class="user-name" style="color: #2481cc; font-weight: bold;">${myName}:</span> <span>${htmlContent}</span>`;
-        
-        // 1. СРАЗУ отображаем сообщение у себя на экране (чтобы оно не пропадало)
-        const chat = document.getElementById('chat');
-        chat.innerHTML += `<div class="msg-line" style="margin-bottom: 8px; word-wrap: break-word;">${fullMessage}</div>`;
-        chat.scrollTop = chat.scrollHeight; // Прокрутка вниз
-
-        // 2. ОТПРАВЛЯЕМ в сеть другим пользователям (только если сервер включен)
-        if (ws && ws.readyState === WebSocket.OPEN) {
-            ws.send(fullMessage);
-        } else {
-            console.log("Соединение с сервером отсутствует, но локально сообщение отображено.");
-        }
-
-        input.innerHTML = ''; // Очищаем поле ввода
-    }
-}
